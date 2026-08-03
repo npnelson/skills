@@ -4,6 +4,20 @@ namespace SkillValidator.Tests;
 
 public class EvaluateCommandTests
 {
+    [Fact]
+    public void Create_ExposesSkipPluginArmOption()
+    {
+        var command = EvaluateCommand.Create();
+
+        Assert.Contains(command.Options, option => option.Name == "--skip-plugin-arm");
+    }
+
+    [Fact]
+    public void ValidatorConfig_RunsPluginArmByDefault()
+    {
+        Assert.False(new ValidatorConfig().SkipPluginArm);
+    }
+
     // These options are judging-dependent. Under --no-judge they cannot run, so Run must reject
     // them up front (before any model/network call) rather than silently ignoring them. Each case
     // short-circuits at the early validation, so no agent client is ever created.

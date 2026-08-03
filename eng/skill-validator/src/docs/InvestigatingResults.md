@@ -90,6 +90,10 @@ Each scenario includes two required runs (baseline + isolated). It may also incl
 
 > **Reasoning-effort spikes:** `--reasoning-effort` applies the same explicit effort to the baseline, isolated-skill, and whole-plugin agent arms. It does not change the judge. Shared-baseline input/output is rejected while an effort override is active so a baseline from another effort cannot be reused accidentally.
 
+> **Isolated model comparisons:** `--skip-plugin-arm` runs only the baseline and isolated target arms. Use it when comparing model or reasoning-effort behavior independently of full-plugin discovery. The scenario's effective `improvementScore` and `perRunScores` then come from the isolated comparison, `skilledPlugin` and plugin activation fields are null, and no plugin agent or plugin judge call is made. Run a separate evaluation without this switch when routing and activation inside the complete plugin are part of the question.
+
+> **Current eval files:** Direct `evaluate` runs accept both the current Vally `stimuli`/`graders` schema and the legacy `scenarios` schema. For Vally inputs, fixture files, setup commands, sibling skills, tool constraints, activation expectations, supported deterministic graders, rubrics, and the top-level timeout are mapped into the validator's execution model.
+
 > **Decoupled runs and judging:** `evaluate --no-judge` runs the agent arms and persists `sessions.db` but performs no judging and needs no baseline file, so baseline and treatment arms can run in one parallel pool. Each persisted session row carries a `baseline_key` column — the same prompt-SHA-plus-target-SHA identity used for baseline reuse. A later `rejudge <treatment-dir> --baseline-dir <baseline-dir>` pairs each treatment run with its baseline run by that key (preferring the matching run index), runs the same judges and gates an inline `evaluate` would, and writes baseline judge/pairwise results back to the baseline `sessions.db` and treatment judge results to the treatment `sessions.db`. Baseline and treatment must share `--model`; the judge model resolves to `--judge-model`, else the treatment DB's persisted judge model, else the baseline DB's, and a mismatch between the two persisted judge models (without an explicit override) is rejected.
 
 ### Breakdown fields
@@ -110,7 +114,7 @@ A `tokenReduction` of -1.0 means the skilled run used ≥2× the baseline's toke
 
 ### Run metrics
 
-Each of `baseline`, `skilledIsolated`, and `skilledPlugin` contains a `metrics` object:
+Each present run (`baseline`, `skilledIsolated`, and optional `skilledPlugin`) contains a `metrics` object:
 
 | Field | Description |
 |-------|-------------|

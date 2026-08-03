@@ -70,8 +70,8 @@ skill-validator evaluate --model claude-sonnet-4.5 --min-improvement 0.2 --tests
 # Use a different model for judging vs agent runs
 skill-validator evaluate --model gpt-5.3-codex --judge-model claude-opus-4.6-fast --tests-dir ./tests/my-plugin ./plugins/my-plugin/skills
 
-# Pin agent reasoning effort for a model-robustness spike
-skill-validator evaluate --model claude-opus-5 --reasoning-effort high --judge-model claude-opus-4.6 --runs 1 --tests-dir ./tests/my-plugin ./plugins/my-plugin/skills/my-skill
+# Pin agent reasoning effort and compare only baseline vs isolated skill for a low-cost model-robustness spike
+skill-validator evaluate --model claude-opus-5 --reasoning-effort high --judge-model claude-opus-4.6 --runs 1 --skip-plugin-arm --tests-dir ./tests/my-plugin ./plugins/my-plugin/skills/my-skill
 
 # Multiple runs for stability
 skill-validator evaluate --runs 5 --tests-dir ./tests/my-plugin ./plugins/my-plugin/skills
@@ -150,6 +150,7 @@ skill-validator check --json --plugin ./plugins/my-plugin
 | `--confidence-level <n>` | `0.95` | Confidence level for statistical intervals (0–1) |
 | `--judge-timeout <n>` | `300` | Judge LLM timeout in seconds |
 | `--require-completion` | `true` | Fail if skill regresses task completion |
+| `--skip-plugin-arm` | `false` | Run only baseline and isolated target arms; use a separate full-plugin run to test discovery and activation. |
 | `--baseline-out <path>` | *(none)* | After running, persist each scenario's averaged baseline (no-skill/no-agent reference) to this file for reuse. Mutually exclusive with `--baseline-from`. |
 | `--baseline-from <path>` | *(none)* | Reuse a precomputed baseline from this file instead of re-running the baseline arm. Must match `--model`, `--judge-model`, and every scenario's prompt, setup inputs, and evaluation criteria. Mutually exclusive with `--baseline-out`. |
 | `--verdict-warn-only` | `false` | Treat verdict failures as warnings (exit 0). Execution errors still fail. |

@@ -27,6 +27,63 @@ public class ParseEvalConfigTests
     }
 
     [Fact]
+    public void ParsesVallyAgentEvalForExecution()
+    {
+        var yaml = """
+            name: agent.test-quality-auditor
+            config:
+              timeout: 5m
+            stimuli:
+              - name: Audit weak tests
+                prompt: Audit this test suite.
+                expect_activation: false
+                environment:
+                  files:
+                    - src: fixtures/weak-tests/WeakTests.csproj
+                      dest: WeakTests/WeakTests.csproj
+                  commands:
+                    - dotnet restore WeakTests/WeakTests.csproj
+                  skills:
+                    - ../../plugins/dotnet-test/skills/test-anti-patterns
+                constraints:
+                  reject_tools:
+                    - edit
+                graders:
+                  - type: output-matches
+                    config:
+                      pattern: (assertion.free|missing.*assert)
+                  - type: exit-success
+                  - type: prompt
+                rubric:
+                  - Identified weak assertions
+            """;
+
+        var config = EvalSchema.ParseEvalConfig(yaml);
+        var scenario = Assert.Single(config.Scenarios);
+
+        Assert.Equal(300, scenario.Timeout);
+        Assert.False(scenario.ExpectActivation);
+        Assert.Equal(["edit"], scenario.RejectTools);
+        Assert.Equal(["Identified weak assertions"], scenario.Rubric);
+
+        var setup = Assert.IsType<SetupConfig>(scenario.Setup);
+        var file = Assert.Single(setup.Files!);
+        Assert.Equal("WeakTests/WeakTests.csproj", file.Path);
+        Assert.Equal("fixtures/weak-tests/WeakTests.csproj", file.Source);
+        Assert.Equal(["dotnet restore WeakTests/WeakTests.csproj"], setup.Commands);
+        Assert.Equal(["test-anti-patterns"], setup.AdditionalRequiredSkills);
+
+        Assert.Collection(
+            scenario.Assertions!,
+            assertion =>
+            {
+                Assert.Equal(AssertionType.OutputMatches, assertion.Type);
+                Assert.Equal("(assertion.free|missing.*assert)", assertion.Pattern);
+            },
+            assertion => Assert.Equal(AssertionType.ExitSuccess, assertion.Type));
+    }
+
+    [Fact]
     public void AppliesDefaultTimeout()
     {
         var yaml = """

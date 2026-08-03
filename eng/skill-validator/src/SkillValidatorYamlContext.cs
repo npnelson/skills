@@ -15,7 +15,11 @@ namespace SkillValidator;
 [YamlSerializable(typeof(EvalSchema.RawSetupFile))]
 [YamlSerializable(typeof(EvalSchema.RawAssertion))]
 [YamlSerializable(typeof(EvalSchema.RawVallyEvalConfig))]
+[YamlSerializable(typeof(EvalSchema.RawVallyConfig))]
 [YamlSerializable(typeof(EvalSchema.RawVallyStimulus))]
+[YamlSerializable(typeof(EvalSchema.RawVallyEnvironment))]
+[YamlSerializable(typeof(EvalSchema.RawVallyEnvironmentFile))]
+[YamlSerializable(typeof(EvalSchema.RawVallyConstraints))]
 [YamlSerializable(typeof(EvalSchema.RawVallyGrader))]
 [YamlSerializable(typeof(EvalSchema.RawVallyGraderConfig))]
 public partial class SkillValidatorYamlContext : StaticContext

@@ -7,6 +7,10 @@ public static class EvalSchema
 
     public static EvalConfig ParseEvalConfig(string yamlContent)
     {
+        var vally = TryParseVallyEvalConfig(yamlContent);
+        if (vally is not null)
+            return vally;
+
         var raw = SkillValidatorYamlContext.UnderscoredDeserializer.Deserialize<RawEvalConfig>(yamlContent)
             ?? throw new InvalidOperationException("Failed to parse eval config YAML");
 
@@ -89,6 +93,8 @@ public static class EvalSchema
         if (raw?.Stimuli is not { Count: > 0 })
             return null;
 
+        var timeout = ParseVallyDurationSeconds(raw.Config?.Timeout)
+            ?? DefaultScenarioTimeoutSeconds;
         var scenarios = new List<EvalScenario>();
         foreach (var stimulus in raw.Stimuli)
         {
@@ -109,8 +115,13 @@ public static class EvalSchema
             scenarios.Add(new EvalScenario(
                 Name: stimulus.Name,
                 Prompt: stimulus.Prompt,
+                Setup: ParseVallyEnvironment(stimulus.Environment),
                 Assertions: assertions,
-                Rubric: stimulus.Rubric is { Count: > 0 } ? stimulus.Rubric : null));
+                Rubric: stimulus.Rubric is { Count: > 0 } ? stimulus.Rubric : null,
+                Timeout: timeout,
+                ExpectTools: stimulus.Constraints?.ExpectTools,
+                RejectTools: stimulus.Constraints?.RejectTools,
+                ExpectActivation: stimulus.ExpectActivation ?? true));
         }
 
         return scenarios.Count > 0 ? new EvalConfig(scenarios) : null;
@@ -122,12 +133,69 @@ public static class EvalSchema
     /// unrecognized grader types (e.g. <c>prompt</c>, the LLM-rubric grader) are
     /// simply skipped rather than treated as errors.
     /// </summary>
+    private static SetupConfig? ParseVallyEnvironment(RawVallyEnvironment? environment)
+    {
+        if (environment is null)
+            return null;
+
+        var files = environment.Files?
+            .Where(file => !string.IsNullOrWhiteSpace(file.Src) && !string.IsNullOrWhiteSpace(file.Dest))
+            .Select(file => new SetupFile(file.Dest, Source: file.Src))
+            .ToList();
+        var skills = environment.Skills?
+            .Select(GetVallyDependencyName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return new SetupConfig(
+            Files: files is { Count: > 0 } ? files : null,
+            Commands: environment.Commands is { Count: > 0 } ? environment.Commands : null,
+            AdditionalRequiredSkills: skills is { Count: > 0 } ? skills : null);
+    }
+
+    private static string GetVallyDependencyName(string reference)
+    {
+        var normalized = reference.Replace('\\', '/').TrimEnd('/');
+        var separator = normalized.LastIndexOf('/');
+        return separator >= 0 ? normalized[(separator + 1)..] : normalized;
+    }
+
+    private static int? ParseVallyDurationSeconds(string? duration)
+    {
+        if (string.IsNullOrWhiteSpace(duration))
+            return null;
+
+        duration = duration.Trim();
+        if (duration.EndsWith("ms", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(duration[..^2], out var milliseconds))
+        {
+            return Math.Max(1, (int)Math.Ceiling(milliseconds / 1000d));
+        }
+
+        if (duration.Length < 2 || !int.TryParse(duration[..^1], out var value))
+            throw new InvalidOperationException($"Invalid eval timeout: {duration}");
+
+        return char.ToLowerInvariant(duration[^1]) switch
+        {
+            's' => value,
+            'm' => checked(value * 60),
+            'h' => checked(value * 60 * 60),
+            _ => throw new InvalidOperationException($"Invalid eval timeout: {duration}"),
+        };
+    }
+
     private static Assertion? MapVallyGrader(RawVallyGrader grader) => grader.Type switch
     {
+        "file-exists" => new Assertion(AssertionType.FileExists, Path: grader.Config?.Path),
+        "file-not-exists" => new Assertion(AssertionType.FileNotExists, Path: grader.Config?.Path),
+        "file-contains" => new Assertion(AssertionType.FileContains, Path: grader.Config?.Path, Value: grader.Config?.Value),
+        "file-not-contains" => new Assertion(AssertionType.FileNotContains, Path: grader.Config?.Path, Value: grader.Config?.Value),
         "output-contains" => new Assertion(AssertionType.OutputContains, Value: grader.Config?.Substring),
         "output-not-contains" => new Assertion(AssertionType.OutputNotContains, Value: grader.Config?.Substring),
         "output-matches" => new Assertion(AssertionType.OutputMatches, Pattern: grader.Config?.Pattern),
         "output-not-matches" => new Assertion(AssertionType.OutputNotMatches, Pattern: grader.Config?.Pattern),
+        "exit-success" => new Assertion(AssertionType.ExitSuccess),
         _ => null,
     };
 
@@ -304,15 +372,43 @@ public static class EvalSchema
 
     internal sealed class RawVallyEvalConfig
     {
+        public RawVallyConfig? Config { get; set; }
         public List<RawVallyStimulus>? Stimuli { get; set; }
+    }
+
+    internal sealed class RawVallyConfig
+    {
+        public string? Timeout { get; set; }
     }
 
     internal sealed class RawVallyStimulus
     {
         public string Name { get; set; } = "";
         public string Prompt { get; set; } = "";
+        public bool? ExpectActivation { get; set; }
+        public RawVallyEnvironment? Environment { get; set; }
+        public RawVallyConstraints? Constraints { get; set; }
         public List<RawVallyGrader>? Graders { get; set; }
         public List<string>? Rubric { get; set; }
+    }
+
+    internal sealed class RawVallyEnvironment
+    {
+        public List<RawVallyEnvironmentFile>? Files { get; set; }
+        public List<string>? Commands { get; set; }
+        public List<string>? Skills { get; set; }
+    }
+
+    internal sealed class RawVallyEnvironmentFile
+    {
+        public string Src { get; set; } = "";
+        public string Dest { get; set; } = "";
+    }
+
+    internal sealed class RawVallyConstraints
+    {
+        public List<string>? ExpectTools { get; set; }
+        public List<string>? RejectTools { get; set; }
     }
 
     internal sealed class RawVallyGrader
@@ -323,6 +419,8 @@ public static class EvalSchema
 
     internal sealed class RawVallyGraderConfig
     {
+        public string? Path { get; set; }
+        public string? Value { get; set; }
         public string? Substring { get; set; }
         public string? Pattern { get; set; }
     }

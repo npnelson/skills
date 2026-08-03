@@ -472,6 +472,12 @@ public sealed record ValidatorConfig
     /// and does not require a baseline.
     /// </summary>
     public bool NoJudge { get; init; }
+
+    /// <summary>
+    /// When set, evaluate only the baseline and isolated target arms. This is useful for
+    /// low-cost model comparisons where full-plugin discovery is evaluated separately.
+    /// </summary>
+    public bool SkipPluginArm { get; init; }
 }
 
 public static class DefaultWeights

@@ -51,6 +51,19 @@ public class FailureIsolationTests
     }
 
     [Fact]
+    public void CreateFailedScenarioComparison_CanOmitPluginArm()
+    {
+        var result = EvaluateCommand.CreateFailedScenarioComparison(
+            "test-scenario",
+            "error",
+            includePluginArm: false);
+
+        Assert.NotNull(result.Baseline);
+        Assert.NotNull(result.SkilledIsolated);
+        Assert.Null(result.SkilledPlugin);
+    }
+
+    [Fact]
     public void FailedScenario_ProducesFailedVerdict()
     {
         var failed = EvaluateCommand.CreateFailedScenarioComparison("scenario-1", "Runner OOM killed");
