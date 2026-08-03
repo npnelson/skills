@@ -439,6 +439,7 @@ public sealed record ValidatorConfig
     public bool RequireCompletion { get; init; } = true;
     public bool Verbose { get; init; }
     public string Model { get; init; } = "claude-opus-4.6";
+    public string? ReasoningEffort { get; init; }
     public string JudgeModel { get; init; } = "claude-opus-4.6";
     public JudgeMode JudgeMode { get; init; } = JudgeMode.Pairwise;
     public int Runs { get; init; } = 5;
@@ -499,6 +500,7 @@ internal sealed class ConsolidateData
 internal sealed class ResultsOutput
 {
     public required string Model { get; init; }
+    public string? ReasoningEffort { get; init; }
     public required string JudgeModel { get; init; }
     public required string Timestamp { get; init; }
     public required IReadOnlyList<SkillVerdict> Verdicts { get; init; }

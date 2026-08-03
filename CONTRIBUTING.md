@@ -295,6 +295,14 @@ Per-skill verdicts are written to `./eval-results/<plugin>/<skill>/results.json`
 > [!WARNING]  
 > LLM evaluations are noisy. For results you intend to share in a Pull Request, raise `runs` in `dotnet-skills.experiment.yaml` to at least 3 (5 is better) for reliable signal.
 
+### Comparing one skill across models (manual spike)
+
+The **One-skill model spike** workflow runs one plugin, skill, model, and reasoning-effort combination per manual dispatch. Add a repository Actions secret named `COPILOT_PAT` with GitHub Copilot access, then choose the workflow under **Actions** and select **Run workflow**.
+
+Each dispatch runs the no-skill baseline, the isolated skill, and the whole-plugin context. A skill that depends on siblings can declare them with `setup.additional_required_skills`; the whole-plugin arm loads every sibling automatically. Download the `skill-spike-*` artifact to compare `results.json`, `summary.md`, and `run-metadata.json` across runs.
+
+Keep the judge model and run count fixed when comparing agent models or effort levels. Start with one run for a cheap smoke test; repeat promising combinations with three runs, including an Opus 4.6 run as an in-harness reference. This is a small robustness experiment using the direct validator, not a replacement for the canonical Vally evaluation pipeline. Run the workflow from your fork's **Actions** page; as noted below, `/evaluate` on a forked pull request ignores fork changes to evaluator workflows and code.
+
 ### CI evaluation
 
 Tests run automatically on pull requests that modify files under `plugins/`. The evaluation workflow discovers changed plugins and evaluates each one. Results are posted as a PR comment and uploaded as build artifacts.

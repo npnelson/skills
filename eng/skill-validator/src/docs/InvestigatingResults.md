@@ -1,6 +1,6 @@
 # Investigating Evaluation Results
 
-> **⚠️ Skill evaluations now run on the Vally harness.** As of the Vally migration, the LLM eval pipeline (`evaluation.yml`) no longer uses `skill-validator evaluate`; it runs Vally via `eng/vally-adapter/` and uploads `vally-results-*` artifacts. For investigating current eval failures, use the guide at `eng/vally-adapter/InvestigatingResults.md` in the repository root instead. This document describes the legacy `skill-validator evaluate` schema and is retained for historical results and reference. (The `skill-validator check` **linter** is unaffected and still runs via `skill-check.yml`.)
+> **⚠️ Skill evaluations now run on the Vally harness.** As of the Vally migration, the main LLM eval pipeline (`evaluation.yml`) no longer uses `skill-validator evaluate`; it runs Vally via `eng/vally-adapter/` and uploads `vally-results-*` artifacts. For investigating current pipeline failures, use the guide at `eng/vally-adapter/InvestigatingResults.md` in the repository root instead. This document describes the `skill-validator evaluate` schema retained for historical results, local runs, and the manual one-skill model-effort spike workflow. (The `skill-validator check` **linter** is unaffected and still runs via `skill-check.yml`.)
 
 This guide is intended primarily for AI agents investigating skill evaluation failures, though humans will find it useful too. It documents the `results.json` schema, common failure patterns, and recommended fixes.
 
@@ -50,6 +50,7 @@ Each file contains a top-level object with:
 | Field | Description |
 |-------|-------------|
 | `model` | Model used for agent runs |
+| `reasoningEffort` | Requested reasoning effort for agent runs, or `null` when the provider default was used |
 | `judgeModel` | Model used for judging |
 | `timestamp` | When the results were written (UTC) |
 | `verdicts[]` | Array of per-skill results |
@@ -86,6 +87,8 @@ Each scenario includes two required runs (baseline + isolated). It may also incl
 > **Note:** Scenarios do not have a `passed` field. To determine pass/fail for an individual scenario, check whether `improvementScore >= 0`. This is the effective score: when no plugin run is present it equals `isolatedImprovementScore`; when a plugin run is present it is the min of isolated and plugin scores. The `passed` field exists only at the verdict level (per-skill).
 
 > **Reused baselines:** When the run was invoked with `--baseline-from`, the `baseline` arm is not executed — its `metrics` and `judgeResult` come from the shared baseline file produced earlier with `--baseline-out` (computed once, honoring `--runs`). Such scenarios are reported with the `baseline-reused` session phase and a `reused` baseline status. The baseline file is keyed on `--model` and `--judge-model` plus, per scenario, a SHA-256 of the prompt and a composite SHA-256 over its setup inputs (copied test files, explicit setup files, and setup commands) and its evaluation criteria (rubric, assertions, expect/reject tools, and turn/token/timeout limits); reuse fails fast if the agent model, judge model, or any prompt-plus-setup-plus-criteria identity is missing, so the baseline you compare against is always identity-matched and a shared prompt across cases with different fixtures or rubrics cannot cross-contaminate. Because the baseline output is identical across every skill/agent that consumes the same file, this acts as a shared control group and removes baseline run-to-run variance from cross-skill comparisons.
+
+> **Reasoning-effort spikes:** `--reasoning-effort` applies the same explicit effort to the baseline, isolated-skill, and whole-plugin agent arms. It does not change the judge. Shared-baseline input/output is rejected while an effort override is active so a baseline from another effort cannot be reused accidentally.
 
 > **Decoupled runs and judging:** `evaluate --no-judge` runs the agent arms and persists `sessions.db` but performs no judging and needs no baseline file, so baseline and treatment arms can run in one parallel pool. Each persisted session row carries a `baseline_key` column — the same prompt-SHA-plus-target-SHA identity used for baseline reuse. A later `rejudge <treatment-dir> --baseline-dir <baseline-dir>` pairs each treatment run with its baseline run by that key (preferring the matching run index), runs the same judges and gates an inline `evaluate` would, and writes baseline judge/pairwise results back to the baseline `sessions.db` and treatment judge results to the treatment `sessions.db`. Baseline and treatment must share `--model`; the judge model resolves to `--judge-model`, else the treatment DB's persisted judge model, else the baseline DB's, and a mismatch between the two persisted judge models (without an explicit override) is rejected.
 

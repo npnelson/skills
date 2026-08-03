@@ -1,0 +1,163 @@
+name: One-skill model spike
+run-name: "Spike: ${{ inputs.plugin }}/${{ inputs.skill }} on ${{ inputs.model }} (${{ inputs.reasoning_effort }})"
+
+on:
+  workflow_dispatch:
+    inputs:
+      plugin:
+        description: 'Plugin directory name, for example dotnet-test'
+        required: true
+        type: string
+      skill:
+        description: 'Skill directory name, for example run-tests'
+        required: true
+        type: string
+      model:
+        description: 'Exact GitHub Copilot model ID'
+        required: true
+        default: claude-opus-5
+        type: string
+      reasoning_effort:
+        description: 'Agent reasoning effort; default lets the provider choose'
+        required: true
+        default: default
+        type: choice
+        options:
+          - default
+          - low
+          - medium
+          - high
+          - xhigh
+          - max
+      judge_model:
+        description: 'Fixed comparison judge model'
+        required: true
+        default: claude-opus-4.6
+        type: string
+      runs:
+        description: 'Runs per eval scenario'
+        required: true
+        default: '1'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    name: "${{ inputs.model }} (${{ inputs.reasoning_effort }})"
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
+        with:
+          persist-credentials: false
+
+      - name: Validate inputs
+        id: validate
+        shell: pwsh
+        env:
+          PLUGIN: ${{ inputs.plugin }}
+          SKILL: ${{ inputs.skill }}
+          MODEL: ${{ inputs.model }}
+          JUDGE_MODEL: ${{ inputs.judge_model }}
+        run: |
+          $namePattern = '\A[A-Za-z0-9._-]+\z'
+          foreach ($value in @($env:PLUGIN, $env:SKILL, $env:MODEL, $env:JUDGE_MODEL)) {
+            if ($value -notmatch $namePattern -or $value -eq '.' -or $value -match '\.\.') {
+              throw "Invalid input '$value'; use a single name containing letters, numbers, '.', '_', or '-'."
+            }
+          }
+
+          $skillPath = "plugins/$($env:PLUGIN)/skills/$($env:SKILL)/SKILL.md"
+          $evalPath = "tests/$($env:PLUGIN)/$($env:SKILL)/eval.yaml"
+          if (-not (Test-Path -LiteralPath $skillPath -PathType Leaf)) {
+            throw "Skill not found at $skillPath"
+          }
+          if (-not (Test-Path -LiteralPath $evalPath -PathType Leaf)) {
+            throw "Eval not found at $evalPath"
+          }
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v5
+        with:
+          global-json-file: global.json
+
+      - name: Build skill-validator
+        run: dotnet publish eng/skill-validator/src/SkillValidator.csproj
+
+      - name: Evaluate one skill
+        env:
+          GITHUB_TOKEN: ${{ secrets.COPILOT_PAT }}
+          PLUGIN: ${{ inputs.plugin }}
+          SKILL: ${{ inputs.skill }}
+          MODEL: ${{ inputs.model }}
+          REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+          JUDGE_MODEL: ${{ inputs.judge_model }}
+          RUNS: ${{ inputs.runs }}
+          RESULTS_DIR: artifacts/model-spike
+        run: |
+          if [ -z "$GITHUB_TOKEN" ]; then
+            echo "::error::Add a repository Actions secret named COPILOT_PAT with GitHub Copilot access."
+            exit 1
+          fi
+
+          EFFORT_ARGS=()
+          if [ "$REASONING_EFFORT" != "default" ]; then
+            EFFORT_ARGS=(--reasoning-effort "$REASONING_EFFORT")
+          fi
+
+          mkdir -p "$RESULTS_DIR"
+          printf '{\n  "plugin": "%s",\n  "skill": "%s",\n  "model": "%s",\n  "reasoningEffort": "%s",\n  "judgeModel": "%s",\n  "runs": %s\n}\n' \
+            "$PLUGIN" "$SKILL" "$MODEL" "$REASONING_EFFORT" "$JUDGE_MODEL" "$RUNS" \
+            > "$RESULTS_DIR/run-metadata.json"
+
+          artifacts/publish/SkillValidator/release/skill-validator evaluate \
+            "plugins/$PLUGIN/skills/$SKILL" \
+            --tests-dir "tests/$PLUGIN" \
+            --model "$MODEL" \
+            "${EFFORT_ARGS[@]}" \
+            --judge-model "$JUDGE_MODEL" \
+            --runs "$RUNS" \
+            --parallel-skills 1 \
+            --parallel-scenarios 1 \
+            --parallel-runs 1 \
+            --no-overfitting-check \
+            --verdict-warn-only \
+            --results-dir "$RESULTS_DIR"
+
+      - name: Write run summary
+        if: always() && steps.validate.outcome == 'success'
+        env:
+          MODEL: ${{ inputs.model }}
+          REASONING_EFFORT: ${{ inputs.reasoning_effort }}
+          JUDGE_MODEL: ${{ inputs.judge_model }}
+        run: |
+          {
+            echo "## One-skill model spike"
+            echo ""
+            echo "- Agent: \`$MODEL\` at \`$REASONING_EFFORT\` effort"
+            echo "- Judge: \`$JUDGE_MODEL\` at its provider default"
+            echo "- Arms: no skill, isolated skill, and whole-plugin context"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          SUMMARY=$(find artifacts/model-spike -name summary.md -type f | sort | tail -1)
+          if [ -n "$SUMMARY" ]; then
+            cat "$SUMMARY" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload results
+        if: always() && steps.validate.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: skill-spike-${{ inputs.plugin }}-${{ inputs.skill }}-${{ inputs.model }}-${{ inputs.reasoning_effort }}
+          path: artifacts/model-spike/
+          if-no-files-found: warn
+          retention-days: 14

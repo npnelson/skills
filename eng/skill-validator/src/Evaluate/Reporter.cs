@@ -14,7 +14,8 @@ public static class Reporter
         string? judgeModel = null,
         string? resultsDir = null,
         string? timestampedResultsDir = null,
-        int rejectedCount = 0)
+        int rejectedCount = 0,
+        string? reasoningEffort = null)
     {
         bool needsResultsDir = reporters.Any(r =>
             r.Type is ReporterType.Json or ReporterType.Junit or ReporterType.Markdown);
@@ -36,7 +37,7 @@ public static class Reporter
                 case ReporterType.Json:
                     if (effectiveResultsDir is null)
                         throw new InvalidOperationException("--results-dir is required for the json reporter");
-                    await ReportJson(verdicts, effectiveResultsDir, model, judgeModel);
+                    await ReportJson(verdicts, effectiveResultsDir, model, judgeModel, reasoningEffort);
                     break;
                 case ReporterType.Junit:
                     if (effectiveResultsDir is null)
@@ -46,7 +47,7 @@ public static class Reporter
                 case ReporterType.Markdown:
                     if (effectiveResultsDir is null)
                         throw new InvalidOperationException("--results-dir is required for the markdown reporter");
-                    await ReportMarkdown(verdicts, effectiveResultsDir, model, judgeModel);
+                    await ReportMarkdown(verdicts, effectiveResultsDir, model, judgeModel, reasoningEffort);
                     break;
             }
         }
@@ -459,7 +460,8 @@ public static class Reporter
     public static string GenerateMarkdownSummary(
         IReadOnlyList<SkillVerdict> verdicts,
         string? model = null,
-        string? judgeModel = null)
+        string? judgeModel = null,
+        string? reasoningEffort = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("## Skill Validation Results");
@@ -638,7 +640,7 @@ public static class Reporter
             }
         }
 
-        sb.AppendLine($"\nModel: {model ?? "unknown"} | Judge: {judgeModel ?? "unknown"}");
+        sb.AppendLine($"\nModel: {model ?? "unknown"} | Reasoning effort: {reasoningEffort ?? "provider-default"} | Judge: {judgeModel ?? "unknown"}");
 
         return sb.ToString();
     }
@@ -647,9 +649,10 @@ public static class Reporter
         IReadOnlyList<SkillVerdict> verdicts,
         string resultsDir,
         string? model,
-        string? judgeModel)
+        string? judgeModel,
+        string? reasoningEffort)
     {
-        var md = GenerateMarkdownSummary(verdicts, model, judgeModel);
+        var md = GenerateMarkdownSummary(verdicts, model, judgeModel, reasoningEffort);
         await File.WriteAllTextAsync(Path.Combine(resultsDir, "summary.md"), md);
         Console.WriteLine($"Markdown summary written to {Path.Combine(resultsDir, "summary.md")}");
 
@@ -724,11 +727,13 @@ public static class Reporter
         IReadOnlyList<SkillVerdict> verdicts,
         string resultsDir,
         string? model,
-        string? judgeModel)
+        string? judgeModel,
+        string? reasoningEffort)
     {
         var output = new ResultsOutput
         {
             Model = model ?? "unknown",
+            ReasoningEffort = reasoningEffort,
             JudgeModel = judgeModel ?? model ?? "unknown",
             Timestamp = DateTime.UtcNow.ToString("o"),
             Verdicts = verdicts,

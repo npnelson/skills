@@ -15,6 +15,7 @@ public static class EvaluateCommand
         var verdictWarnOnlyOpt = new Option<bool>("--verdict-warn-only") { Description = "Treat verdict failures as warnings (exit 0). Execution errors still fail." };
         var verboseOpt = new Option<bool>("--verbose") { Description = "Show detailed per-scenario breakdowns" };
         var modelOpt = new Option<string>("--model") { Description = "Model to use for agent runs", DefaultValueFactory = _ => "claude-opus-4.6" };
+        var reasoningEffortOpt = new Option<string?>("--reasoning-effort") { Description = "Reasoning effort for agent runs (provider default when omitted)" };
         var judgeModelOpt = new Option<string?>("--judge-model") { Description = "Model to use for judging (defaults to --model)" };
         var judgeModeOpt = new Option<string>("--judge-mode") { Description = "Judge mode: pairwise, independent, or both", DefaultValueFactory = _ => "pairwise" }
             .AcceptOnlyFromAmong("pairwise", "independent", "both");
@@ -45,6 +46,7 @@ public static class EvaluateCommand
             verdictWarnOnlyOpt,
             verboseOpt,
             modelOpt,
+            reasoningEffortOpt,
             judgeModelOpt,
             judgeModeOpt,
             runsOpt,
@@ -97,6 +99,7 @@ public static class EvaluateCommand
                 RequireCompletion = parseResult.GetValue(requireCompletionOpt),
                 Verbose = parseResult.GetValue(verboseOpt),
                 Model = parseResult.GetValue(modelOpt) ?? "claude-opus-4.6",
+                ReasoningEffort = parseResult.GetValue(reasoningEffortOpt),
                 JudgeModel = parseResult.GetValue(judgeModelOpt) ?? parseResult.GetValue(modelOpt) ?? "claude-opus-4.6",
                 JudgeMode = judgeMode,
                 Runs = Math.Max(1, parseResult.GetValue(runsOpt)),
@@ -143,6 +146,16 @@ public static class EvaluateCommand
         if (config.BaselineOut is not null && config.BaselineFrom is not null)
         {
             Console.Error.WriteLine("--baseline-out and --baseline-from cannot be used together.");
+            return 1;
+        }
+
+        // This lightweight model-effort spike deliberately does not version the
+        // shared-baseline file format. Reusing a baseline produced at a different
+        // effort would invalidate the comparison, so fail closed instead.
+        if (config.ReasoningEffort is not null &&
+            (config.BaselineOut is not null || config.BaselineFrom is not null))
+        {
+            Console.Error.WriteLine("--reasoning-effort cannot be combined with --baseline-out or --baseline-from.");
             return 1;
         }
 
@@ -194,7 +207,25 @@ public static class EvaluateCommand
                 }
             }
 
+            if (config.ReasoningEffort is not null)
+            {
+                var selectedModel = models.First(m => m.Id == config.Model);
+                var supportedEfforts = selectedModel.SupportedReasoningEfforts ?? [];
+                if (selectedModel.Capabilities?.Supports?.ReasoningEffort != true ||
+                    !supportedEfforts.Contains(config.ReasoningEffort))
+                {
+                    var available = supportedEfforts.Count > 0
+                        ? string.Join(", ", supportedEfforts)
+                        : "none";
+                    Console.Error.WriteLine(
+                        $"Invalid reasoning effort \"{config.ReasoningEffort}\" for model \"{config.Model}\". " +
+                        $"Supported efforts: {available}");
+                    return 1;
+                }
+            }
+
             Console.WriteLine($"Using model: {config.Model}" +
+                (config.ReasoningEffort is not null ? $", reasoning-effort: {config.ReasoningEffort}" : ", reasoning-effort: provider-default") +
                 (config.NoJudge ? " (judging deferred; --no-judge)"
                     : config.JudgeModel != config.Model ? $", judge: {config.JudgeModel}" : "") +
                 $", judge-mode: {config.JudgeMode}");
@@ -462,7 +493,8 @@ public static class EvaluateCommand
 
         await Reporter.ReportResults(verdicts, config.Reporters, config.Verbose,
             config.Model, config.JudgeModel, config.ResultsDir, timestampedResultsDir,
-            rejectedCount: rejectionMessages.Count);
+            rejectedCount: rejectionMessages.Count,
+            reasoningEffort: config.ReasoningEffort);
 
         if (rejectionMessages.Count > 0)
         {
@@ -886,11 +918,12 @@ public static class EvaluateCommand
         // 2. Agent-isolated: target agent only (+ scenario deps)
         var isolatedTask = AgentRunner.RunAgent(new RunOptions(scenario, null, target.EvalPath, config.Model, config.Verbose,
             PluginRoot: null, Log: runLog, McpServers: target.McpServers, SessionsDir: sessionsDir,
-            SessionId: isolatedSessionId, Agent: agent, AdditionalSkills: additionalSkills, AdditionalAgents: additionalAgents), cancellationToken);
+            SessionId: isolatedSessionId, Agent: agent, AdditionalSkills: additionalSkills, AdditionalAgents: additionalAgents,
+            ReasoningEffort: config.ReasoningEffort), cancellationToken);
         // 3. Agent-plugin: full plugin context + agent selected
         var pluginTask = AgentRunner.RunAgent(new RunOptions(scenario, null, target.EvalPath, config.Model, config.Verbose,
             PluginRoot: pluginRoot, Log: runLog, McpServers: target.McpServers, SessionsDir: sessionsDir,
-            SessionId: pluginSessionId, Agent: agent), cancellationToken);
+            SessionId: pluginSessionId, Agent: agent, ReasoningEffort: config.ReasoningEffort), cancellationToken);
 
         RunMetrics baselineMetrics;
         RunMetrics isolatedMetrics;
@@ -908,7 +941,8 @@ public static class EvaluateCommand
         {
             // 1. Baseline: no agent, no skills — vanilla
             var baselineTask = AgentRunner.RunAgent(new RunOptions(scenario, null, target.EvalPath, config.Model, config.Verbose,
-                PluginRoot: null, Log: runLog, SessionsDir: sessionsDir, SessionId: baselineSessionId), cancellationToken);
+                PluginRoot: null, Log: runLog, SessionsDir: sessionsDir, SessionId: baselineSessionId,
+                ReasoningEffort: config.ReasoningEffort), cancellationToken);
             var all = await Task.WhenAll(baselineTask, isolatedTask, pluginTask);
             baselineMetrics = all[0];
             isolatedMetrics = all[1];
@@ -1500,10 +1534,12 @@ public static class EvaluateCommand
         // 2. Skilled-isolated: target skill + declared dependencies
         var isolatedTask = AgentRunner.RunAgent(new RunOptions(scenario, skill, evalSkill.EvalPath, config.Model, config.Verbose,
             PluginRoot: null, Log: runLog, McpServers: evalSkill.McpServers, SessionsDir: sessionsDir,
-            SessionId: isolatedSessionId, AdditionalSkills: additionalSkills, AdditionalAgents: additionalAgents), cancellationToken);
+            SessionId: isolatedSessionId, AdditionalSkills: additionalSkills, AdditionalAgents: additionalAgents,
+            ReasoningEffort: config.ReasoningEffort), cancellationToken);
         // 3. Skilled-plugin: load entire plugin from plugin root directory
         var pluginTask = AgentRunner.RunAgent(new RunOptions(scenario, skill, evalSkill.EvalPath, config.Model, config.Verbose,
-            PluginRoot: pluginRoot, Log: runLog, McpServers: evalSkill.McpServers, SessionsDir: sessionsDir, SessionId: pluginSessionId), cancellationToken);
+            PluginRoot: pluginRoot, Log: runLog, McpServers: evalSkill.McpServers, SessionsDir: sessionsDir,
+            SessionId: pluginSessionId, ReasoningEffort: config.ReasoningEffort), cancellationToken);
 
         RunMetrics baselineMetrics;
         RunMetrics isolatedMetrics;
@@ -1521,7 +1557,8 @@ public static class EvaluateCommand
         {
             // 1. Baseline: no plugin, no skills — vanilla agent
             var baselineTask = AgentRunner.RunAgent(new RunOptions(scenario, null, evalSkill.EvalPath, config.Model, config.Verbose,
-                PluginRoot: null, Log: runLog, SessionsDir: sessionsDir, SessionId: baselineSessionId), cancellationToken);
+                PluginRoot: null, Log: runLog, SessionsDir: sessionsDir, SessionId: baselineSessionId,
+                ReasoningEffort: config.ReasoningEffort), cancellationToken);
             var all = await Task.WhenAll(baselineTask, isolatedTask, pluginTask);
             baselineMetrics = all[0];
             isolatedMetrics = all[1];
@@ -1830,12 +1867,14 @@ public static class EvaluateCommand
                         // Run with target skill only
                         var skillOnlyMetrics = await AgentRunner.RunAgent(new RunOptions(
                             scenario, targetSkill, targetEvalSkill.EvalPath, config.Model, config.Verbose,
-                            Log: scenarioLog, McpServers: targetEvalSkill.McpServers), cancellationToken);
+                            Log: scenarioLog, McpServers: targetEvalSkill.McpServers,
+                            ReasoningEffort: config.ReasoningEffort), cancellationToken);
 
                         // Run with all skills loaded
                         var allSkillsMetrics = await AgentRunner.RunAgent(new RunOptions(
                             scenario, targetSkill, targetEvalSkill.EvalPath, config.Model, config.Verbose,
-                            Log: scenarioLog, AdditionalSkills: otherSkills, McpServers: targetEvalSkill.McpServers), cancellationToken);
+                            Log: scenarioLog, AdditionalSkills: otherSkills, McpServers: targetEvalSkill.McpServers,
+                            ReasoningEffort: config.ReasoningEffort), cancellationToken);
 
                         // Evaluate assertions on both
                         if (scenario.Assertions is { Count: > 0 })

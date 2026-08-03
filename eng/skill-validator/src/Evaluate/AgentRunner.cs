@@ -20,7 +20,8 @@ public sealed record RunOptions(
     string? SessionsDir = null,
     string? SessionId = null,
     AgentInfo? Agent = null,
-    IReadOnlyList<AgentInfo>? AdditionalAgents = null);
+    IReadOnlyList<AgentInfo>? AdditionalAgents = null,
+    string? ReasoningEffort = null);
 
 public static class AgentRunner
 {
@@ -229,7 +230,8 @@ public static class AgentRunner
         string? sessionsDir = null,
         string? sessionId = null,
         AgentInfo? agent = null,
-        IReadOnlyList<AgentInfo>? additionalAgents = null)
+        IReadOnlyList<AgentInfo>? additionalAgents = null,
+        string? reasoningEffort = null)
     {
         // Runtime guard: Skill and Agent are mutually exclusive targets.
         // (additionalSkills/additionalAgents are cross-dependencies and may co-exist with either target.)
@@ -440,6 +442,7 @@ public static class AgentRunner
         return new SessionConfig
         {
             Model = model,
+            ReasoningEffort = reasoningEffort,
             Streaming = true,
             WorkingDirectory = workDir,
             SkillDirectories = [..skillDirs, ..noiseDirs],
@@ -568,7 +571,7 @@ public static class AgentRunner
             await using var session = await client.CreateSessionAsync(
                 await BuildSessionConfig(options.Skill, options.PluginRoot, options.Model, workDir, options.McpServers,
                     options.AdditionalSkills, options.Log, options.Verbose, options.SessionsDir, options.SessionId,
-                    options.Agent, options.AdditionalAgents));
+                    options.Agent, options.AdditionalAgents, options.ReasoningEffort));
 
             var done = new TaskCompletionSource();
             var effectiveTimeout = options.Scenario.Timeout;

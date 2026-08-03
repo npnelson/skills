@@ -70,6 +70,9 @@ skill-validator evaluate --model claude-sonnet-4.5 --min-improvement 0.2 --tests
 # Use a different model for judging vs agent runs
 skill-validator evaluate --model gpt-5.3-codex --judge-model claude-opus-4.6-fast --tests-dir ./tests/my-plugin ./plugins/my-plugin/skills
 
+# Pin agent reasoning effort for a model-robustness spike
+skill-validator evaluate --model claude-opus-5 --reasoning-effort high --judge-model claude-opus-4.6 --runs 1 --tests-dir ./tests/my-plugin ./plugins/my-plugin/skills/my-skill
+
 # Multiple runs for stability
 skill-validator evaluate --runs 5 --tests-dir ./tests/my-plugin ./plugins/my-plugin/skills
 
@@ -136,6 +139,7 @@ skill-validator check --json --plugin ./plugins/my-plugin
 | `<paths...>` | *(required)* | Paths to skill directories or parent directories |
 | `--tests-dir <path>` | *(required)* | Directory containing test subdirectories |
 | `--model <name>` | `claude-opus-4.6` | Model for agent runs |
+| `--reasoning-effort <level>` | provider default | Reasoning effort for agent runs. The selected Copilot model validates supported values. Cannot be combined with shared-baseline flags. |
 | `--judge-model <name>` | same as `--model` | Model for LLM judge (can be different) |
 | `--judge-mode <mode>` | `pairwise` | Judge mode: `pairwise`, `independent`, or `both` |
 | `--min-improvement <n>` | `0.1` | Minimum improvement score (0–1) |

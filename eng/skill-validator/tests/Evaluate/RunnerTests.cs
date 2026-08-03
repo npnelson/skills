@@ -246,6 +246,20 @@ public class BuildSessionConfigTests
     {
         var config = await AgentRunner.BuildSessionConfig(MockSkill, null, "claude-opus-4.6", "C:\\tmp\\work");
         Assert.Equal("claude-opus-4.6", config.Model);
+        Assert.Null(config.ReasoningEffort);
+    }
+
+    [Fact]
+    public async Task PassesReasoningEffortThrough()
+    {
+        var config = await AgentRunner.BuildSessionConfig(
+            MockSkill,
+            null,
+            "claude-opus-5",
+            "C:\\tmp\\work",
+            reasoningEffort: "high");
+
+        Assert.Equal("high", config.ReasoningEffort);
     }
 
     [Fact]
