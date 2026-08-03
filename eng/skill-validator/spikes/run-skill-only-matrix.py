@@ -23,11 +23,12 @@ from typing import Any
 
 MODELS = ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna")
 EFFORTS = ("medium", "high")
-# Current Codex usage rates relative to Sol: Terra costs 20% less and Luna 80% less.
+# Current Codex credit rates relative to Sol. The input, cached-input, and output
+# rate ratios are identical: Terra is 50/125 and Luna is 5/125 of Sol.
 MODEL_USAGE_WEIGHTS = {
     "gpt-5.6-sol": 1.0,
-    "gpt-5.6-terra": 0.8,
-    "gpt-5.6-luna": 0.2,
+    "gpt-5.6-terra": 0.4,
+    "gpt-5.6-luna": 0.04,
 }
 CLAUDE_JUDGE_MODEL = "claude-opus-5"
 CLAUDE_JUDGE_EFFORT = "high"
@@ -585,7 +586,7 @@ def aggregate(
             f'- Full experiment: {totals["fullWallSeconds"]:.1f}s model wall, {totals["fullTokens"]} tokens',
             "",
             "`CachedInputTokens` is a subset of input tokens and is not added again to total tokens.",
-            "Sol-equivalent usage applies the current relative rates: Sol 1.0, Terra 0.8, Luna 0.2.",
+            "Sol-equivalent usage applies the current credit-rate ratios: Sol 1.0, Terra 0.4, Luna 0.04.",
             "A 5/5 perfect rate is promising screening evidence, not proof that a cell always scores 7/7.",
             "Each output was judged once, so score variance is end-to-end eval variance; it does not isolate judge variance from agent variance.",
         )
