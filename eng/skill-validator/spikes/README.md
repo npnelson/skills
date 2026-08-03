@@ -56,3 +56,28 @@ wsl env RESULTS_DIR=artifacts/direct-cli-eval/<timestamp>-medium RESUME=1 bash .
 
 Claude OAuth 401s are retried once automatically; the first response is kept as
 `*.attempt1.raw.json` for diagnosis.
+
+## Skill-only noise and value matrix
+
+`run-skill-only-matrix.py` runs five skill-enabled trials for each combination
+of GPT-5.6 Sol, Terra, and Luna at medium and high effort: 30 Codex calls total.
+The schedule interleaves the six cells, and five high-effort Opus 5 calls judge
+one anonymized output from every cell per batch. Resulting fixture files are
+included with the response so terse agents that edited the project are judged
+on their actual work.
+
+Run from Windows Command Prompt:
+
+```cmd
+wsl bash -lic "python3 ./eng/skill-validator/spikes/run-skill-only-matrix.py --runs 5"
+```
+
+The only additional WSL prerequisite is Python 3. Results include the schedule,
+every raw response and work directory, blinded judge mappings and outputs,
+per-run CSV data, and an aggregate Markdown/JSON report with score variance,
+7/7 frequency, criterion-level misses, tokens, wall time, and the observed
+quality/efficiency frontier. Each output is judged once, so this measures
+end-to-end evaluation noise rather than separating agent noise from judge noise.
+
+This experiment compares model/effort choices when the skill is present. It
+does not estimate the skill's uplift over a no-skill baseline.
