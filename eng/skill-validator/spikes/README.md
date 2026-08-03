@@ -3,12 +3,13 @@
 `run-direct-model-smoke.sh` is a deliberately narrow spike for comparing the
 `generate-testability-wrappers` skill with Claude and Codex without consuming
 GitHub Copilot credits. It runs the no-DI `AsyncLocal` scenario once through
-four isolated arms:
+eight isolated arms:
 
 1. Claude baseline
 2. Claude with only `generate-testability-wrappers`
-3. Codex baseline
-4. Codex with only `generate-testability-wrappers`
+3. GPT-5.6 Sol baseline and skill
+4. GPT-5.6 Terra baseline and skill
+5. GPT-5.6 Luna baseline and skill
 
 It then makes one direct Claude Opus judge call at high effort. This is useful
 for a quick directional result; it does not reproduce skill-validator's
@@ -31,13 +32,14 @@ wsl bash ./eng/skill-validator/spikes/run-direct-model-smoke.sh medium
 Use `low`, `medium`, `high`, `xhigh`, or `max` as the single argument. Results
 go to `artifacts/direct-cli-eval/<timestamp>-<effort>/` and include raw CLI
 output, final responses, stderr, per-arm metadata, the judge result, and all
-four isolated work directories.
+isolated work directories. The summary reports per-arm wall time and total,
+input, cached-input, and output tokens, plus full agent/judge totals.
 
-The defaults are `claude-opus-5`, `gpt-5.6-sol`, and a high-effort Opus judge.
-Environment variables can override them:
+The defaults are `claude-opus-5`, all three GPT-5.6 variants, and a high-effort
+Opus judge. Environment variables can override them:
 
 ```bash
-CLAUDE_MODEL=claude-opus-5 CODEX_MODEL=gpt-5.6-sol JUDGE_EFFORT=high RUN_JUDGE=1 \
+CLAUDE_MODEL=claude-opus-5 CODEX_MODELS="gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna" JUDGE_EFFORT=high RUN_JUDGE=1 \
   bash ./eng/skill-validator/spikes/run-direct-model-smoke.sh medium
 ```
 
